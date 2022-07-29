@@ -1017,6 +1017,13 @@ void Pane::_ControlConnectionStateChangedHandler(const winrt::Windows::Foundatio
         return;
     }
 
+    if (_isDefTermSession)
+    {
+        // We have been told to close upon process termination regardless of the value of
+        // the profile's CloseOnExit, so go ahead and close
+        Close();
+    }
+
     if (_profile)
     {
         const auto mode = _profile.CloseOnExit();
@@ -3106,6 +3113,24 @@ void Pane::_SetupResources()
 int Pane::GetLeafPaneCount() const noexcept
 {
     return _IsLeaf() ? 1 : (_firstChild->GetLeafPaneCount() + _secondChild->GetLeafPaneCount());
+}
+
+// Method Description:
+// - Should be called when this pane is created via a default terminal handoff
+// - Finalizes our configuration given the information that we have been
+//   created via default handoff
+void Pane::FinalizeConfigurationGivenDefault()
+{
+    if (_IsLeaf() && _profile && _profile.CloseOnExit() == CloseOnExitMode::Automatic)
+    {
+        {
+            // We only want to close 'gracefully' if we were launched by Terminal
+            // Since we were launched via defterm, override this (i.e. it will
+            // be treated as 'always', see _ControlConnectionStateChangedHandler
+            // for where this boolean is used, and see GH #13325 for discussion)
+            _isDefTermSession = true;
+        }
+    }
 }
 
 // Method Description:
