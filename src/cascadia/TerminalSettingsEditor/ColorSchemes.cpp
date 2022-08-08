@@ -1,138 +1,112 @@
-// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "MainPage.h"
 #include "ColorSchemes.h"
 #include "ColorTableEntry.g.cpp"
 #include "ColorSchemes.g.cpp"
 
-#include <LibraryResources.h>
-
 using namespace winrt;
 using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
-using namespace winrt::Windows::UI::Xaml::Navigation;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Microsoft::UI::Xaml::Controls;
-
-namespace winrt
-{
-    namespace MUX = Microsoft::UI::Xaml;
-    namespace WUX = Windows::UI::Xaml;
-}
+using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
-    ColorSchemes::ColorSchemes()
+    static constexpr std::array<std::string_view, 16> TableColors = {
+        "Black",
+        "Red",
+        "Green",
+        "Yellow",
+        "Blue",
+        "Purple",
+        "Cyan",
+        "White",
+        "Bright Black",
+        "Bright Red",
+        "Bright Green",
+        "Bright Yellow",
+        "Bright Blue",
+        "Bright Purple",
+        "Bright Cyan",
+        "Bright White"
+    };
+
+    ColorSchemes::ColorSchemes() :
+        _ColorSchemeList{ single_threaded_observable_vector<hstring>() },
+        _CurrentColorTable{ single_threaded_observable_vector<Editor::ColorTableEntry>() }
     {
         InitializeComponent();
 
-        Automation::AutomationProperties::SetName(ColorSchemeComboBox(), RS_(L"ColorScheme_Name/Header"));
-        Automation::AutomationProperties::SetFullDescription(ColorSchemeComboBox(), RS_(L"ColorScheme_Name/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
-        ToolTipService::SetToolTip(ColorSchemeComboBox(), box_value(RS_(L"ColorScheme_Name/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip")));
-
-        Automation::AutomationProperties::SetName(RenameButton(), RS_(L"Rename/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
-
-        Automation::AutomationProperties::SetName(NameBox(), RS_(L"ColorScheme_Name/Header"));
-        Automation::AutomationProperties::SetFullDescription(NameBox(), RS_(L"ColorScheme_Name/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
-        ToolTipService::SetToolTip(NameBox(), box_value(RS_(L"ColorScheme_Name/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip")));
-
-        Automation::AutomationProperties::SetName(RenameAcceptButton(), RS_(L"RenameAccept/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
-        Automation::AutomationProperties::SetName(RenameCancelButton(), RS_(L"RenameCancel/[using:Windows.UI.Xaml.Controls]ToolTipService/ToolTip"));
-        Automation::AutomationProperties::SetName(AddNewButton(), RS_(L"ColorScheme_AddNewButton/Text"));
-        Automation::AutomationProperties::SetName(DeleteButton(), RS_(L"ColorScheme_DeleteButton/Text"));
-    }
-
-    void ColorSchemes::OnNavigatedTo(const NavigationEventArgs& e)
-    {
-        _ViewModel = e.Parameter().as<Editor::ColorSchemesPageViewModel>();
-    }
-
-    void ColorSchemes::DeleteConfirmation_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*e*/)
-    {
-        _ViewModel.RequestDeleteCurrentScheme();
-        DeleteButton().Flyout().Hide();
-
-        // GH#11971, part 2. If we delete a scheme, and the next scheme we've
-        // loaded is an inbox one that _can't_ be deleted, then we need to toss
-        // focus to something sensible, rather than letting it fall out to the
-        // tab item.
-        //
-        // When deleting a scheme and the next scheme _is_ deletable, this isn't
-        // an issue, we'll already correctly focus the Delete button.
-        //
-        // However, it seems even more useful for focus to ALWAYS land on the
-        // scheme dropdown box. This forces Narrator to read the name of the
-        // newly selected color scheme, which seemed more useful.
-        ColorSchemeComboBox().Focus(FocusState::Programmatic);
-    }
-
-    // Function Description:
-    // - Pre-populates/focuses the name TextBox, updates the UI
-    // Arguments:
-    // - <unused>
-    // Return Value:
-    // - <none>
-    void ColorSchemes::Rename_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*e*/)
-    {
-        NameBox().Text(_ViewModel.CurrentScheme().Name());
-        _ViewModel.RequestEnterRename();
-        NameBox().Focus(FocusState::Programmatic);
-        NameBox().SelectAll();
-    }
-
-    void ColorSchemes::RenameAccept_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*e*/)
-    {
-        _RenameCurrentScheme(NameBox().Text());
-        RenameButton().Focus(FocusState::Programmatic);
-    }
-
-    void ColorSchemes::RenameCancel_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*e*/)
-    {
-        _ViewModel.RequestExitRename(false, {});
-        RenameErrorTip().IsOpen(false);
-        RenameButton().Focus(FocusState::Programmatic);
-    }
-
-    void ColorSchemes::NameBox_PreviewKeyDown(const IInspectable& /*sender*/, const winrt::Windows::UI::Xaml::Input::KeyRoutedEventArgs& e)
-    {
-        if (e.OriginalKey() == winrt::Windows::System::VirtualKey::Enter)
+        // Initialize our list of color schemes and initially set color scheme and table.
+        auto colorSchemeMap = MainPage::Settings().GlobalSettings().ColorSchemes();
+        for (const auto& pair : MainPage::Settings().GlobalSettings().ColorSchemes())
         {
-            _RenameCurrentScheme(NameBox().Text());
-            e.Handled(true);
+            _ColorSchemeList.Append(pair.Key());
         }
-        else if (e.OriginalKey() == winrt::Windows::System::VirtualKey::Escape)
-        {
-            RenameErrorTip().IsOpen(false);
-            e.Handled(true);
-        }
-        ColorSchemeComboBox().Focus(FocusState::Programmatic);
     }
 
-    void ColorSchemes::_RenameCurrentScheme(hstring newName)
+    IObservableVector<hstring> ColorSchemes::ColorSchemeList()
     {
-        if (_ViewModel.RequestExitRename(true, newName))
-        {
-            // update the UI
-            RenameErrorTip().IsOpen(false);
+        return _ColorSchemeList;
+    }
 
-            // The color scheme is renamed appropriately, but the ComboBox still shows the old name (until you open it)
-            // We need to manually force the ComboBox to refresh itself.
-            const auto selectedIndex{ ColorSchemeComboBox().SelectedIndex() };
-            ColorSchemeComboBox().SelectedIndex((selectedIndex + 1) % ViewModel().AllColorSchemes().Size());
-            ColorSchemeComboBox().SelectedIndex(selectedIndex);
-        }
-        else
-        {
-            RenameErrorTip().Target(NameBox());
-            RenameErrorTip().IsOpen(true);
+    void ColorSchemes::ColorSchemeSelectionChanged(IInspectable const& /*sender*/,
+                                                   SelectionChangedEventArgs const& args)
+    {
+        //  Update the color scheme this page is modifying
+        auto str = winrt::unbox_value<hstring>(args.AddedItems().GetAt(0));
+        auto colorScheme = MainPage::Settings().GlobalSettings().ColorSchemes().Lookup(str);
+        CurrentColorScheme(colorScheme);
+        _UpdateColorTable(colorScheme);
+    }
 
-            // focus the name box
-            NameBox().Focus(FocusState::Programmatic);
-            NameBox().SelectAll();
+    void ColorSchemes::_UpdateColorSchemeList()
+    {
+        auto colorSchemeMap = MainPage::Settings().GlobalSettings().ColorSchemes();
+        for (const auto& pair : MainPage::Settings().GlobalSettings().ColorSchemes())
+        {
+            _ColorSchemeList.Append(pair.Key());
         }
+    }
+
+    void ColorSchemes::ColorPickerChanged(IInspectable const& sender,
+                                          ColorChangedEventArgs const& /*args*/)
+    {
+        if (auto picker = sender.try_as<ColorPicker>())
+        {
+            // TODO: Commented out for now because Tag currently won't bind to an index correctly.
+            // The idea is this function will grab the index from the tag and call SetColorTableEntry.
+            //auto index = winrt::unbox_value<uint8_t>(picker.Tag());
+            //CurrentColorScheme().SetColorTableEntry(index, args.NewColor());
+        }
+    }
+
+    // Update the Page's displayed color table
+    void ColorSchemes::_UpdateColorTable(const Model::ColorScheme& colorScheme)
+    {
+        _CurrentColorTable.Clear();
+        for (uint8_t i = 0; i < TableColors.size(); ++i)
+        {
+            auto entry = winrt::make<ColorTableEntry>(i, colorScheme.Table()[i]);
+            _CurrentColorTable.Append(entry);
+        }
+    }
+
+    ColorTableEntry::ColorTableEntry(uint32_t index, Windows::UI::Color color)
+    {
+        Index(winrt::box_value(index));
+        Color(color);
+        Name(to_hstring(TableColors[index]));
+    }
+
+    Windows::UI::Xaml::Media::Brush ColorTableEntry::ColorToBrush(Windows::UI::Color color)
+    {
+        return SolidColorBrush(color);
     }
 }

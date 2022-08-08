@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import "GlobalAppearanceViewModel.idl";
-
 namespace Microsoft.Terminal.Settings.Editor
 {
     [default_interface] runtimeclass GlobalAppearance : Windows.UI.Xaml.Controls.Page
     {
         GlobalAppearance();
-        GlobalAppearanceViewModel ViewModel { get; };
+        Microsoft.Terminal.Settings.Model.GlobalAppSettings GlobalSettings { get; };
     }
 }

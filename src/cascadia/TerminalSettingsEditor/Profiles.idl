@@ -1,14 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import "MainPage.idl";
-import "ProfileViewModel.idl";
-
 namespace Microsoft.Terminal.Settings.Editor
 {
-    runtimeclass ProfilePageNavigationState
+    [default_interface] runtimeclass Profiles : Windows.UI.Xaml.Controls.Page
     {
-        ProfileViewModel Profile { get; };
-        Boolean FocusDeleteButton;
-    };
+        Profiles();
+        Microsoft.Terminal.Settings.Model.Profile Profile { get; };
+    }
 }

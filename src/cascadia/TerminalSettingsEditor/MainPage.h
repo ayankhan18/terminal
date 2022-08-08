@@ -1,73 +1,40 @@
-// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 #pragma once
 
-#include "MainPage.g.h"
-#include "Breadcrumb.g.h"
 #include "Utils.h"
+#include "MainPage.g.h"
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
-    struct Breadcrumb : BreadcrumbT<Breadcrumb>
-    {
-        Breadcrumb(IInspectable tag, winrt::hstring label, BreadcrumbSubPage subPage) :
-            _Tag{ tag },
-            _Label{ label },
-            _SubPage{ subPage } {}
-
-        WINRT_PROPERTY(IInspectable, Tag);
-        WINRT_PROPERTY(winrt::hstring, Label);
-        WINRT_PROPERTY(BreadcrumbSubPage, SubPage);
-    };
-
     struct MainPage : MainPageT<MainPage>
     {
         MainPage() = delete;
-        MainPage(const Model::CascadiaSettings& settings);
+        MainPage(winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings settings);
 
-        void UpdateSettings(const Model::CascadiaSettings& settings);
+        void SettingsNav_Loaded(Windows::Foundation::IInspectable const& sender, Windows::UI::Xaml::RoutedEventArgs const& args);
+        void SettingsNav_ItemInvoked(Microsoft::UI::Xaml::Controls::NavigationView const& sender, Microsoft::UI::Xaml::Controls::NavigationViewItemInvokedEventArgs const& args);
+        void SettingsNav_BackRequested(Microsoft::UI::Xaml::Controls::NavigationView const&, Microsoft::UI::Xaml::Controls::NavigationViewBackRequestedEventArgs const& args);
+        bool On_BackRequested();
+        static void Navigate(Windows::UI::Xaml::Controls::Frame contentFrame, hstring clickedItemTag);
 
-        void OpenJsonKeyDown(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::KeyRoutedEventArgs& args);
-        void OpenJsonTapped(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::Input::TappedRoutedEventArgs& args);
-        void SettingsNav_Loaded(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
-        void SettingsNav_ItemInvoked(const Microsoft::UI::Xaml::Controls::NavigationView& sender, const Microsoft::UI::Xaml::Controls::NavigationViewItemInvokedEventArgs& args);
-        void SaveButton_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
-        void ResetButton_Click(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
-        void BreadcrumbBar_ItemClicked(const Microsoft::UI::Xaml::Controls::BreadcrumbBar& sender, const Microsoft::UI::Xaml::Controls::BreadcrumbBarItemClickedEventArgs& args);
+        std::map<IInspectable, hstring> SearchList;
 
-        void SetHostingWindow(uint64_t hostingWindow) noexcept;
-        bool TryPropagateHostingWindow(IInspectable object) noexcept;
-        uint64_t GetHostingWindow() const noexcept;
-
-        winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
-
-        Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;
-
-        TYPED_EVENT(OpenJson, Windows::Foundation::IInspectable, Model::SettingsTarget);
+        void AutoSuggestBox_TextChanged(Windows::Foundation::IInspectable const& sender, const winrt::Windows::UI::Xaml::Controls::AutoSuggestBoxTextChangedEventArgs args);
+        void AutoSuggestBox_QuerySubmitted(const winrt::Windows::UI::Xaml::Controls::AutoSuggestBox sender, const winrt::Windows::UI::Xaml::Controls::AutoSuggestBoxQuerySubmittedEventArgs args);
+        void AutoSuggestBox_SuggestionChosen(const winrt::Windows::UI::Xaml::Controls::AutoSuggestBox sender, const winrt::Windows::UI::Xaml::Controls::AutoSuggestBoxSuggestionChosenEventArgs args);
+        void SearchSettings(hstring query, winrt::Windows::UI::Xaml::Controls::AutoSuggestBox& autoBox);
+        static winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings Settings();
 
     private:
-        Windows::Foundation::Collections::IObservableVector<IInspectable> _breadcrumbs;
-        Model::CascadiaSettings _settingsSource;
-        Model::CascadiaSettings _settingsClone;
+        // XAML should data-bind to the _settingsClone
+        // When "save" is pressed, _settingsSource = _settingsClone
+        static winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settingsSource;
+        winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settingsClone{ nullptr };
 
-        std::optional<HWND> _hostingHwnd;
-
-        void _InitializeProfilesList();
-        void _CreateAndNavigateToNewProfile(const uint32_t index, const Model::Profile& profile);
-        winrt::Microsoft::UI::Xaml::Controls::NavigationViewItem _CreateProfileNavViewItem(const Editor::ProfileViewModel& profile);
-        void _DeleteProfile(const Windows::Foundation::IInspectable sender, const Editor::DeleteProfileEventArgs& args);
-        void _AddProfileHandler(const winrt::guid profileGuid);
-
-        void _SetupProfileEventHandling(const winrt::Microsoft::Terminal::Settings::Editor::ProfilePageNavigationState state);
-
-        void _PreNavigateHelper();
-        void _Navigate(hstring clickedItemTag, BreadcrumbSubPage subPage);
-        void _Navigate(const Editor::ProfileViewModel& profile, BreadcrumbSubPage subPage, const bool focusDeleteButton = false);
-
-        winrt::Microsoft::Terminal::Settings::Editor::ColorSchemesPageViewModel _colorSchemesPageVM{ nullptr };
-
-        Windows::UI::Xaml::Data::INotifyPropertyChanged::PropertyChanged_revoker _profileViewModelChangedRevoker;
+        static void _OpenJSONOnClick();
+        static fire_and_forget _LaunchSettings(const Microsoft::Terminal::Settings::Model::SettingsTarget target);
     };
 }
 

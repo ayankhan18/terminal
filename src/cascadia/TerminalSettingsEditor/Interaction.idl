@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import "InteractionViewModel.idl";
-
 namespace Microsoft.Terminal.Settings.Editor
 {
     [default_interface] runtimeclass Interaction : Windows.UI.Xaml.Controls.Page
     {
         Interaction();
-        InteractionViewModel ViewModel { get; };
+        Microsoft.Terminal.Settings.Model.GlobalAppSettings GlobalSettings { get; };
     }
 }

@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import "TabBase.idl";
-import "TerminalTabStatus.idl";
+import "ITab.idl";
 
 namespace TerminalApp
 {
-    [default_interface] runtimeclass TerminalTab : TabBase
+    [default_interface] runtimeclass TerminalTab : ITab, Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
-        TerminalTabStatus TabStatus { get; };
     }
 }

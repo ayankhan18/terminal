@@ -1,11 +1,13 @@
-// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 #include "pch.h"
 #include "Interaction.h"
 #include "Interaction.g.cpp"
+#include "MainPage.h"
 
-using namespace winrt::Windows::UI::Xaml::Navigation;
+using namespace winrt;
+using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
@@ -15,8 +17,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         InitializeComponent();
     }
 
-    void Interaction::OnNavigatedTo(const NavigationEventArgs& e)
+    GlobalAppSettings Interaction::GlobalSettings()
     {
-        _ViewModel = e.Parameter().as<Editor::InteractionViewModel>();
+        return MainPage::Settings().GlobalSettings();
     }
 }

@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import "TabBase.idl";
+import "ITab.idl";
 
 namespace TerminalApp
 {
-    [default_interface] runtimeclass SettingsTab : TabBase
+    [default_interface] runtimeclass SettingsTab : ITab
     {
-        void UpdateSettings(Microsoft.Terminal.Settings.Model.CascadiaSettings settings);
     }
 }
