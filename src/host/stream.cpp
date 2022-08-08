@@ -15,11 +15,11 @@
 
 #include "../types/inc/GlyphWidth.hpp"
 
-#include "../interactivity/inc/ServiceLocator.hpp"
+#include "..\interactivity\inc\ServiceLocator.hpp"
+
+#include "cookedRead.hpp"
 
 #pragma hdrstop
-
-using Microsoft::Console::Interactivity::ServiceLocator;
 
 // Routine Description:
 // - This routine is used in stream input.  It gets input and filters it for unicode characters.
@@ -35,12 +35,13 @@ using Microsoft::Console::Interactivity::ServiceLocator;
 // arrow key.
 // Return Value:
 // - STATUS_SUCCESS on success or a relevant error code on failure.
-[[nodiscard]] NTSTATUS GetChar(_Inout_ InputBuffer* const pInputBuffer,
-                               _Out_ wchar_t* const pwchOut,
-                               const bool Wait,
-                               _Out_opt_ bool* const pCommandLineEditingKeys,
-                               _Out_opt_ bool* const pPopupKeys,
-                               _Out_opt_ DWORD* const pdwKeyState) noexcept
+[[nodiscard]]
+NTSTATUS GetChar(_Inout_ InputBuffer* const pInputBuffer,
+                 _Out_ wchar_t* const pwchOut,
+                 const bool Wait,
+                 _Out_opt_ bool* const pCommandLineEditingKeys,
+                 _Out_opt_ bool* const pPopupKeys,
+                 _Out_opt_ DWORD* const pdwKeyState) noexcept
 {
     if (nullptr != pCommandLineEditingKeys)
     {
@@ -79,9 +80,9 @@ using Microsoft::Console::Interactivity::ServiceLocator;
 
         if (inputEvent->EventType() == InputEventType::KeyEvent)
         {
-            auto keyEvent = std::unique_ptr<KeyEvent>(static_cast<KeyEvent*>(inputEvent.release()));
+            std::unique_ptr<KeyEvent> keyEvent = std::unique_ptr<KeyEvent>(static_cast<KeyEvent*>(inputEvent.release()));
 
-            auto commandLineEditKey = false;
+            bool commandLineEditKey = false;
             if (pCommandLineEditingKeys)
             {
                 commandLineEditKey = keyEvent->IsCommandLineEditingKey();
@@ -128,9 +129,9 @@ using Microsoft::Console::Interactivity::ServiceLocator;
                 }
                 // Ignore Escape and Newline chars
                 else if (keyEvent->IsKeyDown() &&
-                         (WI_IsFlagSet(pInputBuffer->InputMode, ENABLE_VIRTUAL_TERMINAL_INPUT) ||
-                          (keyEvent->GetVirtualKeyCode() != VK_ESCAPE &&
-                           keyEvent->GetCharData() != UNICODE_LINEFEED)))
+                    (WI_IsFlagSet(pInputBuffer->InputMode, ENABLE_VIRTUAL_TERMINAL_INPUT) ||
+                         (keyEvent->GetVirtualKeyCode() != VK_ESCAPE &&
+                          keyEvent->GetCharData() != UNICODE_LINEFEED)))
                 {
                     *pwchOut = keyEvent->GetCharData();
                     return STATUS_SUCCESS;
@@ -153,14 +154,14 @@ using Microsoft::Console::Interactivity::ServiceLocator;
                 }
                 else
                 {
-                    const auto zeroVkeyData = VkKeyScanW(0);
-                    const auto zeroVKey = LOBYTE(zeroVkeyData);
-                    const auto zeroControlKeyState = HIBYTE(zeroVkeyData);
+                    const short zeroVkeyData = ServiceLocator::LocateInputServices()->VkKeyScanW(0);
+                    const byte zeroVKey = LOBYTE(zeroVkeyData);
+                    const byte zeroControlKeyState = HIBYTE(zeroVkeyData);
 
                     try
                     {
                         // Convert real Windows NT modifier bit into bizarre Console bits
-                        auto consoleModKeyState = FromVkKeyScan(zeroControlKeyState);
+                        std::unordered_set<ModifierKeyState> consoleModKeyState = FromVkKeyScan(zeroControlKeyState);
 
                         if (zeroVKey == keyEvent->GetVirtualKeyCode() &&
                             keyEvent->DoActiveModifierKeysMatch(consoleModKeyState))
@@ -182,18 +183,18 @@ using Microsoft::Console::Interactivity::ServiceLocator;
 
 // Routine Description:
 // - This routine returns the total number of screen spaces the characters up to the specified character take up.
-til::CoordType RetrieveTotalNumberOfSpaces(const til::CoordType sOriginalCursorPositionX,
-                                           _In_reads_(ulCurrentPosition) const WCHAR* const pwchBuffer,
-                                           _In_ size_t ulCurrentPosition)
+size_t RetrieveTotalNumberOfSpaces(const SHORT sOriginalCursorPositionX,
+                                   _In_reads_(ulCurrentPosition) const WCHAR * const pwchBuffer,
+                                   _In_ size_t ulCurrentPosition)
 {
-    auto XPosition = sOriginalCursorPositionX;
-    til::CoordType NumSpaces = 0;
+    SHORT XPosition = sOriginalCursorPositionX;
+    size_t NumSpaces = 0;
 
     for (size_t i = 0; i < ulCurrentPosition; i++)
     {
-        const auto Char = pwchBuffer[i];
+        WCHAR const Char = pwchBuffer[i];
 
-        til::CoordType NumSpacesForChar;
+        size_t NumSpacesForChar;
         if (Char == UNICODE_TAB)
         {
             NumSpacesForChar = NUMBER_OF_SPACES_IN_TAB(XPosition);
@@ -210,7 +211,7 @@ til::CoordType RetrieveTotalNumberOfSpaces(const til::CoordType sOriginalCursorP
         {
             NumSpacesForChar = 1;
         }
-        XPosition += NumSpacesForChar;
+        XPosition = (SHORT)(XPosition + NumSpacesForChar);
         NumSpaces += NumSpacesForChar;
     }
 
@@ -219,15 +220,15 @@ til::CoordType RetrieveTotalNumberOfSpaces(const til::CoordType sOriginalCursorP
 
 // Routine Description:
 // - This routine returns the number of screen spaces the specified character takes up.
-til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositionX,
-                                      _In_reads_(ulCurrentPosition + 1) const WCHAR* const pwchBuffer,
-                                      _In_ size_t ulCurrentPosition)
+size_t RetrieveNumberOfSpaces(_In_ SHORT sOriginalCursorPositionX,
+                              _In_reads_(ulCurrentPosition + 1) const WCHAR * const pwchBuffer,
+                              _In_ size_t ulCurrentPosition)
 {
-    auto Char = pwchBuffer[ulCurrentPosition];
+    WCHAR Char = pwchBuffer[ulCurrentPosition];
     if (Char == UNICODE_TAB)
     {
-        til::CoordType NumSpaces = 0;
-        auto XPosition = sOriginalCursorPositionX;
+        size_t NumSpaces = 0;
+        SHORT XPosition = sOriginalCursorPositionX;
 
         for (size_t i = 0; i <= ulCurrentPosition; i++)
         {
@@ -248,7 +249,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
             {
                 NumSpaces = 1;
             }
-            XPosition += NumSpaces;
+            XPosition = (SHORT)(XPosition + NumSpaces);
         }
 
         return NumSpaces;
@@ -267,6 +268,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     }
 }
 
+
 // Routine Description:
 // - if we have leftover input, copy as much fits into the user's
 // buffer and return.  we may have multi line input, if a macro
@@ -280,18 +282,19 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 // Return Value:
 // - STATUS_NO_MEMORY in low memory situation
 // - other relevant NTSTATUS codes
-[[nodiscard]] static NTSTATUS _ReadPendingInput(InputBuffer& inputBuffer,
-                                                gsl::span<char> buffer,
-                                                size_t& bytesRead,
-                                                INPUT_READ_HANDLE_DATA& readHandleState,
-                                                const bool unicode)
+[[nodiscard]]
+static NTSTATUS _ReadPendingInput(InputBuffer& inputBuffer,
+                                  gsl::span<char> buffer,
+                                  size_t& bytesRead,
+                                  INPUT_READ_HANDLE_DATA& readHandleState,
+                                  const bool unicode)
 {
     // TODO: MSFT: 18047766 - Correct this method to not play byte counting games.
-    auto fAddDbcsLead = FALSE;
+    BOOL fAddDbcsLead = FALSE;
     size_t NumToWrite = 0;
     size_t NumToBytes = 0;
-    auto pBuffer = reinterpret_cast<wchar_t*>(buffer.data());
-    auto bufferRemaining = buffer.size_bytes();
+    wchar_t* pBuffer = reinterpret_cast<wchar_t*>(buffer.data());
+    size_t bufferRemaining = buffer.size_bytes();
     bytesRead = 0;
 
     if (buffer.size_bytes() < sizeof(wchar_t))
@@ -300,7 +303,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     }
 
     const auto pending = readHandleState.GetPendingInput();
-    auto pendingBytes = pending.size() * sizeof(wchar_t);
+    size_t pendingBytes = pending.size() * sizeof(wchar_t);
     auto Tmp = pending.cbegin();
 
     if (readHandleState.IsMultilineInput())
@@ -309,8 +312,8 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
         {
             if (inputBuffer.IsReadPartialByteSequenceAvailable())
             {
-                auto event = inputBuffer.FetchReadPartialByteSequence(false);
-                const auto pKeyEvent = static_cast<const KeyEvent* const>(event.get());
+                std::unique_ptr<IInputEvent> event = inputBuffer.FetchReadPartialByteSequence(false);
+                const KeyEvent* const pKeyEvent = static_cast<const KeyEvent* const>(event.get());
                 *pBuffer = static_cast<char>(pKeyEvent->GetCharData());
                 ++pBuffer;
                 bufferRemaining -= sizeof(wchar_t);
@@ -337,6 +340,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
             }
         }
 
+
         NumToWrite = 0;
         Tmp = pending.cbegin();
         while (NumToWrite < pendingBytes &&
@@ -358,8 +362,8 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
         {
             if (inputBuffer.IsReadPartialByteSequenceAvailable())
             {
-                auto event = inputBuffer.FetchReadPartialByteSequence(false);
-                const auto pKeyEvent = static_cast<const KeyEvent* const>(event.get());
+                std::unique_ptr<IInputEvent> event = inputBuffer.FetchReadPartialByteSequence(false);
+                const KeyEvent* const pKeyEvent = static_cast<const KeyEvent* const>(event.get());
                 *pBuffer = static_cast<char>(pKeyEvent->GetCharData());
                 ++pBuffer;
                 bufferRemaining -= sizeof(wchar_t);
@@ -391,7 +395,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     pendingBytes -= NumToWrite;
     if (pendingBytes != 0)
     {
-        std::wstring_view remainingPending{ pending.data() + (NumToWrite / sizeof(wchar_t)), pendingBytes / sizeof(wchar_t) };
+        std::wstring_view remainingPending{ pending.data() + (NumToWrite / sizeof(wchar_t)) , pendingBytes / sizeof(wchar_t) };
         readHandleState.UpdatePending(remainingPending);
     }
     else
@@ -403,7 +407,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     {
         // if ansi, translate string.  we allocated the capture buffer
         // large enough to handle the translated string.
-        auto tempBuffer = std::make_unique<char[]>(NumToBytes);
+        std::unique_ptr<char[]> tempBuffer = std::make_unique<char[]>(NumToBytes);
         std::unique_ptr<IInputEvent> partialEvent;
 
         NumToWrite = TranslateUnicodeToOem(pBuffer,
@@ -416,9 +420,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
             inputBuffer.StoreReadPartialByteSequence(std::move(partialEvent));
         }
 
-        // clang-format off
-#pragma prefast(suppress: __WARNING_POTENTIAL_BUFFER_OVERFLOW_HIGH_PRIORITY, "This access is fine but prefast can't follow it, evidently")
-        // clang-format on
+#pragma prefast(suppress:__WARNING_POTENTIAL_BUFFER_OVERFLOW_HIGH_PRIORITY, "This access is fine but prefast can't follow it, evidently")
         memmove(pBuffer, tempBuffer.get(), NumToWrite);
 
         if (fAddDbcsLead)
@@ -445,7 +447,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 // - bytesRead - on output, the number of bytes read into pwchBuffer
 // - controlKeyState - set by a cooked read
 // - initialData - text of initial data found in the read message
-// - ctrlWakeupMask - used by COOKED_READ_DATA
+// - ctrlWakeupMask - used by COOKED_READ_DATA to trigger an early return of reading if masked key is pressed
 // - readHandleState - input read handle data associated with this read operation
 // - exeName - name of the exe requesting the read
 // - unicode - true if read should be unicode, false otherwise
@@ -455,37 +457,39 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 // - STATUS_UNSUCCESSFUL if not able to access current screen buffer
 // - STATUS_NO_MEMORY in low memory situation
 // - other relevant HRESULT codes
-[[nodiscard]] static HRESULT _ReadLineInput(InputBuffer& inputBuffer,
-                                            const HANDLE processData,
-                                            gsl::span<char> buffer,
-                                            size_t& bytesRead,
-                                            DWORD& controlKeyState,
-                                            const std::string_view initialData,
-                                            const DWORD ctrlWakeupMask,
-                                            INPUT_READ_HANDLE_DATA& readHandleState,
-                                            const std::wstring_view exeName,
-                                            const bool unicode,
-                                            std::unique_ptr<IWaitRoutine>& waiter) noexcept
+[[nodiscard]]
+static HRESULT _ReadLineInput(InputBuffer& inputBuffer,
+                              const HANDLE processData,
+                              gsl::span<char> buffer,
+                              size_t& bytesRead,
+                              DWORD& controlKeyState,
+                              const std::string_view /*initialData*/,
+                              const DWORD ctrlWakeupMask,
+                              INPUT_READ_HANDLE_DATA& readHandleState,
+                              const std::wstring_view exeName,
+                              const bool unicode,
+                              std::unique_ptr<IWaitRoutine>& waiter) noexcept
 {
-    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     RETURN_HR_IF(E_FAIL, !gci.HasActiveOutputBuffer());
 
-    auto& screenInfo = gci.GetActiveOutputBuffer();
+    SCREEN_INFORMATION& screenInfo = gci.GetActiveOutputBuffer();
+    const std::shared_ptr<CommandHistory> pCommandHistory = CommandHistory::s_Find(processData);
 
     try
     {
-        auto cookedReadData = std::make_unique<COOKED_READ_DATA>(&inputBuffer, // pInputBuffer
-                                                                 &readHandleState, // pInputReadHandleData
-                                                                 screenInfo, // pScreenInfo
-                                                                 buffer.size_bytes(), // UserBufferSize
-                                                                 reinterpret_cast<wchar_t*>(buffer.data()), // UserBuffer
-                                                                 ctrlWakeupMask, // CtrlWakeupMask
-                                                                 exeName, // exe name
-                                                                 initialData,
-                                                                 reinterpret_cast<ConsoleProcessHandle*>(processData)); //pClientProcess
-
+        // TODO hook up other arguments to CookedRead
+        auto cookedReadData = std::make_unique<CookedRead>(&inputBuffer,
+                                                           &readHandleState,
+                                                           screenInfo,
+                                                           pCommandHistory,
+                                                           reinterpret_cast<wchar_t*>(buffer.data()),
+                                                           buffer.size_bytes() / sizeof(wchar_t),
+                                                           ctrlWakeupMask,
+                                                           exeName);
         gci.SetCookedReadData(cookedReadData.get());
-        bytesRead = buffer.size_bytes(); // This parameter on the way in is the size to read, on the way out, it will be updated to what is actually read.
+        // bytesRead on the way in is the size to read, on the way out, it will be updated to what is actually read.
+        bytesRead = buffer.size_bytes();
         if (CONSOLE_STATUS_WAIT == cookedReadData->Read(unicode, bytesRead, controlKeyState))
         {
             // memory will be cleaned up by wait queue
@@ -495,6 +499,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
         {
             gci.SetCookedReadData(nullptr);
         }
+
     }
     CATCH_RETURN();
 
@@ -521,18 +526,20 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 // populated.
 // - STATUS_SUCCESS on success
 // - Other NTSTATUS codes as necessary
-[[nodiscard]] static NTSTATUS _ReadCharacterInput(InputBuffer& inputBuffer,
-                                                  gsl::span<char> buffer,
-                                                  size_t& bytesRead,
-                                                  INPUT_READ_HANDLE_DATA& readHandleState,
-                                                  const bool unicode,
-                                                  std::unique_ptr<IWaitRoutine>& waiter)
+[[nodiscard]]
+static NTSTATUS _ReadCharacterInput(InputBuffer& inputBuffer,
+                                    gsl::span<char> buffer,
+                                    size_t& bytesRead,
+                                    INPUT_READ_HANDLE_DATA& readHandleState,
+                                    const bool unicode,
+                                    std::unique_ptr<IWaitRoutine>& waiter)
 {
+
     size_t NumToWrite = 0;
-    auto addDbcsLead = false;
-    auto Status = STATUS_SUCCESS;
-    auto pBuffer = reinterpret_cast<wchar_t*>(buffer.data());
-    auto bufferRemaining = buffer.size_bytes();
+    bool addDbcsLead = false;
+    NTSTATUS Status = STATUS_SUCCESS;
+    wchar_t* pBuffer = reinterpret_cast<wchar_t*>(buffer.data());
+    size_t bufferRemaining = buffer.size_bytes();
     bytesRead = 0;
 
     if (buffer.size() < 1)
@@ -542,14 +549,14 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 
     if (bytesRead < bufferRemaining)
     {
-        auto pwchBufferTmp = pBuffer;
+        wchar_t* pwchBufferTmp = pBuffer;
 
         NumToWrite = 0;
 
         if (!unicode && inputBuffer.IsReadPartialByteSequenceAvailable())
         {
-            auto event = inputBuffer.FetchReadPartialByteSequence(false);
-            const auto pKeyEvent = static_cast<const KeyEvent* const>(event.get());
+            std::unique_ptr<IInputEvent> event = inputBuffer.FetchReadPartialByteSequence(false);
+            const KeyEvent* const pKeyEvent = static_cast<const KeyEvent* const>(event.get());
             *pBuffer = static_cast<char>(pKeyEvent->GetCharData());
             ++pBuffer;
             bufferRemaining -= sizeof(wchar_t);
@@ -636,7 +643,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
                 inputBuffer.StoreReadPartialByteSequence(std::move(partialEvent));
             }
 
-#pragma prefast(suppress : 26053 26015, "PREfast claims read overflow. *pReadByteCount is the exact size of tempBuffer as allocated above.")
+#pragma prefast(suppress:26053 26015, "PREfast claims read overflow. *pReadByteCount is the exact size of tempBuffer as allocated above.")
             memmove(pBuffer, tempBuffer.get(), bytesRead);
 
             if (addDbcsLead)
@@ -680,17 +687,18 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 // populated.
 // - STATUS_SUCCESS on success
 // - Other NSTATUS codes as necessary
-[[nodiscard]] NTSTATUS DoReadConsole(InputBuffer& inputBuffer,
-                                     const HANDLE processData,
-                                     gsl::span<char> buffer,
-                                     size_t& bytesRead,
-                                     ULONG& controlKeyState,
-                                     const std::string_view initialData,
-                                     const DWORD ctrlWakeupMask,
-                                     INPUT_READ_HANDLE_DATA& readHandleState,
-                                     const std::wstring_view exeName,
-                                     const bool unicode,
-                                     std::unique_ptr<IWaitRoutine>& waiter) noexcept
+[[nodiscard]]
+NTSTATUS DoReadConsole(InputBuffer& inputBuffer,
+                       const HANDLE processData,
+                       gsl::span<char> buffer,
+                       size_t& bytesRead,
+                       ULONG& controlKeyState,
+                       const std::string_view initialData,
+                       const DWORD ctrlWakeupMask,
+                       INPUT_READ_HANDLE_DATA& readHandleState,
+                       const std::wstring_view exeName,
+                       const bool unicode,
+                       std::unique_ptr<IWaitRoutine>& waiter) noexcept
 {
     try
     {
@@ -705,6 +713,8 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
         {
             return STATUS_BUFFER_TOO_SMALL;
         }
+
+        const size_t OutputBufferSize = buffer.size_bytes();
 
         if (readHandleState.IsInputPending())
         {
@@ -741,16 +751,17 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     CATCH_RETURN();
 }
 
-[[nodiscard]] HRESULT ApiRoutines::ReadConsoleAImpl(IConsoleInputObject& context,
-                                                    gsl::span<char> buffer,
-                                                    size_t& written,
-                                                    std::unique_ptr<IWaitRoutine>& waiter,
-                                                    const std::string_view initialData,
-                                                    const std::wstring_view exeName,
-                                                    INPUT_READ_HANDLE_DATA& readHandleState,
-                                                    const HANDLE clientHandle,
-                                                    const DWORD controlWakeupMask,
-                                                    DWORD& controlKeyState) noexcept
+[[nodiscard]]
+HRESULT ApiRoutines::ReadConsoleAImpl(IConsoleInputObject& context,
+                                      gsl::span<char> buffer,
+                                      size_t& written,
+                                      std::unique_ptr<IWaitRoutine>& waiter,
+                                      const std::string_view initialData,
+                                      const std::wstring_view exeName,
+                                      INPUT_READ_HANDLE_DATA& readHandleState,
+                                      const HANDLE clientHandle,
+                                      const DWORD controlWakeupMask,
+                                      DWORD& controlKeyState) noexcept
 {
     try
     {
@@ -769,16 +780,17 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
     CATCH_RETURN();
 }
 
-[[nodiscard]] HRESULT ApiRoutines::ReadConsoleWImpl(IConsoleInputObject& context,
-                                                    gsl::span<char> buffer,
-                                                    size_t& written,
-                                                    std::unique_ptr<IWaitRoutine>& waiter,
-                                                    const std::string_view initialData,
-                                                    const std::wstring_view exeName,
-                                                    INPUT_READ_HANDLE_DATA& readHandleState,
-                                                    const HANDLE clientHandle,
-                                                    const DWORD controlWakeupMask,
-                                                    DWORD& controlKeyState) noexcept
+[[nodiscard]]
+HRESULT ApiRoutines::ReadConsoleWImpl(IConsoleInputObject& context,
+                                      gsl::span<char> buffer,
+                                      size_t& written,
+                                      std::unique_ptr<IWaitRoutine>& waiter,
+                                      const std::string_view initialData,
+                                      const std::wstring_view exeName,
+                                      INPUT_READ_HANDLE_DATA& readHandleState,
+                                      const HANDLE clientHandle,
+                                      const DWORD controlWakeupMask,
+                                      DWORD& controlKeyState) noexcept
 {
     try
     {
@@ -799,7 +811,7 @@ til::CoordType RetrieveNumberOfSpaces(_In_ til::CoordType sOriginalCursorPositio
 
 void UnblockWriteConsole(const DWORD dwReason)
 {
-    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     gci.Flags &= ~dwReason;
 
     if (WI_AreAllFlagsClear(gci.Flags, (CONSOLE_SUSPENDED | CONSOLE_SELECTING | CONSOLE_SCROLLBAR_TRACKING)))

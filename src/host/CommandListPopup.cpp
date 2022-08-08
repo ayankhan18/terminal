@@ -12,9 +12,9 @@
 #include "dbcs.h"
 #include "../types/inc/GlyphWidth.hpp"
 
-#include "../interactivity/inc/ServiceLocator.hpp"
+#include "..\interactivity\inc\ServiceLocator.hpp"
 
-static constexpr size_t COMMAND_NUMBER_SIZE = 8; // size of command number buffer
+static constexpr size_t COMMAND_NUMBER_SIZE = 8;   // size of command number buffer
 
 // Routine Description:
 // - Calculates what the proposed size of the popup should be, based on the commands in the history
@@ -22,10 +22,10 @@ static constexpr size_t COMMAND_NUMBER_SIZE = 8; // size of command number buffe
 // - history - the history to look through to measure command sizes
 // Return Value:
 // - the proposed size of the popup with the history list taken into account
-static til::size calculatePopupSize(const CommandHistory& history)
+static COORD calculatePopupSize(const CommandHistory& history)
 {
     // this is the historical size of the popup, so it is now used as a minimum
-    const til::size minSize = { 40, 10 };
+    const COORD minSize = { 40, 10 };
 
     // padding is for the command number listing before a command is printed to the window.
     // ex: |10: echo blah
@@ -45,9 +45,9 @@ static til::size calculatePopupSize(const CommandHistory& history)
     }
 
     // calculate height, it can range up to 20 rows
-    auto height = std::clamp(gsl::narrow<til::CoordType>(history.GetNumberOfCommands()), minSize.Y, 20);
+    short height = std::clamp(gsl::narrow<short>(history.GetNumberOfCommands()), minSize.Y, 20i16);
 
-    return { gsl::narrow_cast<til::CoordType>(width), height };
+    return { gsl::narrow<short>(width), height };
 }
 
 CommandListPopup::CommandListPopup(SCREEN_INFORMATION& screenInfo, const CommandHistory& history) :
@@ -59,19 +59,18 @@ CommandListPopup::CommandListPopup(SCREEN_INFORMATION& screenInfo, const Command
     _setBottomIndex();
 }
 
-[[nodiscard]] NTSTATUS CommandListPopup::_handlePopupKeys(COOKED_READ_DATA& cookedReadData,
-                                                          const wchar_t wch,
-                                                          const DWORD modifiers) noexcept
+[[nodiscard]]
+NTSTATUS CommandListPopup::_handlePopupKeys(CookedRead& cookedReadData, const wchar_t wch, const DWORD modifiers) noexcept
 {
     try
     {
         short Index = 0;
-        const auto shiftPressed = WI_IsFlagSet(modifiers, SHIFT_PRESSED);
+        const bool shiftPressed = WI_IsFlagSet(modifiers, SHIFT_PRESSED);
         switch (wch)
         {
         case VK_F9:
         {
-            const auto hr = CommandLine::Instance().StartCommandNumberPopup(cookedReadData);
+            const HRESULT hr = CommandLine::Instance().StartCommandNumberPopup(cookedReadData);
             if (S_FALSE == hr)
             {
                 // If we couldn't make the popup, break and go around to read another input character.
@@ -139,7 +138,7 @@ void CommandListPopup::_setBottomIndex()
 {
     if (_currentCommand < (SHORT)(_history.GetNumberOfCommands() - Height()))
     {
-        _bottomIndex = std::max(_currentCommand, gsl::narrow<SHORT>(Height() - 1));
+        _bottomIndex = std::max(_currentCommand, gsl::narrow<SHORT>(Height() - 1i16));
     }
     else
     {
@@ -147,7 +146,8 @@ void CommandListPopup::_setBottomIndex()
     }
 }
 
-[[nodiscard]] NTSTATUS CommandListPopup::_deleteSelection(COOKED_READ_DATA& cookedReadData) noexcept
+[[nodiscard]]
+NTSTATUS CommandListPopup::_deleteSelection(CookedRead& cookedReadData) noexcept
 {
     try
     {
@@ -176,7 +176,8 @@ void CommandListPopup::_setBottomIndex()
 // - moves the selected history item up in the history list
 // Arguments:
 // - cookedReadData - the read wait object to operate upon
-[[nodiscard]] NTSTATUS CommandListPopup::_swapUp(COOKED_READ_DATA& cookedReadData) noexcept
+[[nodiscard]]
+NTSTATUS CommandListPopup::_swapUp(CookedRead& cookedReadData) noexcept
 {
     try
     {
@@ -198,13 +199,14 @@ void CommandListPopup::_setBottomIndex()
 // - moves the selected history item down in the history list
 // Arguments:
 // - cookedReadData - the read wait object to operate upon
-[[nodiscard]] NTSTATUS CommandListPopup::_swapDown(COOKED_READ_DATA& cookedReadData) noexcept
+[[nodiscard]]
+NTSTATUS CommandListPopup::_swapDown(CookedRead& cookedReadData) noexcept
 {
     try
     {
         auto& history = cookedReadData.History();
 
-        if (history.GetNumberOfCommands() <= 1 || _currentCommand == gsl::narrow<short>(history.GetNumberOfCommands()) - 1)
+        if (history.GetNumberOfCommands() <= 1 || _currentCommand == gsl::narrow<short>(history.GetNumberOfCommands()) - 1i16)
         {
             return STATUS_SUCCESS;
         }
@@ -216,57 +218,15 @@ void CommandListPopup::_setBottomIndex()
     return STATUS_SUCCESS;
 }
 
-void CommandListPopup::_handleReturn(COOKED_READ_DATA& cookedReadData)
+void CommandListPopup::_handleReturn(CookedRead& cookedReadData)
 {
-    short Index = 0;
-    auto Status = STATUS_SUCCESS;
-    DWORD LineCount = 1;
-    Index = _currentCommand;
+    const short index = _currentCommand;
     CommandLine::Instance().EndCurrentPopup();
-    SetCurrentCommandLine(cookedReadData, (SHORT)Index);
-    cookedReadData.ProcessInput(UNICODE_CARRIAGERETURN, 0, Status);
-    // complete read
-    if (cookedReadData.IsEchoInput())
-    {
-        // check for alias
-        cookedReadData.ProcessAliases(LineCount);
-    }
-
-    Status = STATUS_SUCCESS;
-    size_t NumBytes;
-    if (cookedReadData.BytesRead() > cookedReadData.UserBufferSize() || LineCount > 1)
-    {
-        if (LineCount > 1)
-        {
-            const wchar_t* Tmp;
-            for (Tmp = cookedReadData.BufferStartPtr(); *Tmp != UNICODE_LINEFEED; Tmp++)
-            {
-                FAIL_FAST_IF(!(Tmp < (cookedReadData.BufferStartPtr() + cookedReadData.BytesRead())));
-            }
-            NumBytes = (Tmp - cookedReadData.BufferStartPtr() + 1) * sizeof(*Tmp);
-        }
-        else
-        {
-            NumBytes = cookedReadData.UserBufferSize();
-        }
-
-        // Copy what we can fit into the user buffer
-        const auto bytesWritten = cookedReadData.SavePromptToUserBuffer(NumBytes / sizeof(wchar_t));
-
-        // Store all of the remaining as pending until the next read operation.
-        cookedReadData.SavePendingInput(NumBytes / sizeof(wchar_t), LineCount > 1);
-        NumBytes = bytesWritten;
-    }
-    else
-    {
-        NumBytes = cookedReadData.BytesRead();
-        NumBytes = cookedReadData.SavePromptToUserBuffer(NumBytes / sizeof(wchar_t));
-    }
-
-    cookedReadData.SetReportedByteCount(NumBytes);
+    SetCurrentCommandLine(cookedReadData, index);
+    cookedReadData.BufferInput(UNICODE_CARRIAGERETURN);
 }
 
-void CommandListPopup::_cycleSelectionToMatchingCommands(COOKED_READ_DATA& cookedReadData, const wchar_t wch)
+void CommandListPopup::_cycleSelectionToMatchingCommands(CookedRead& cookedReadData, const wchar_t wch)
 {
     short Index = 0;
     if (cookedReadData.History().FindMatchingCommand({ &wch, 1 },
@@ -283,14 +243,15 @@ void CommandListPopup::_cycleSelectionToMatchingCommands(COOKED_READ_DATA& cooke
 // Return Value:
 // - CONSOLE_STATUS_WAIT - we ran out of input, so a wait block was created
 // - CONSOLE_STATUS_READ_COMPLETE - user hit return
-[[nodiscard]] NTSTATUS CommandListPopup::Process(COOKED_READ_DATA& cookedReadData) noexcept
+[[nodiscard]]
+NTSTATUS CommandListPopup::Process(CookedRead& cookedReadData) noexcept
 {
-    auto Status = STATUS_SUCCESS;
+    NTSTATUS Status = STATUS_SUCCESS;
 
     for (;;)
     {
-        auto wch = UNICODE_NULL;
-        auto popupKeys = false;
+        WCHAR wch = UNICODE_NULL;
+        bool popupKeys = false;
         DWORD modifiers = 0;
 
         Status = _getUserInput(cookedReadData, popupKeys, modifiers, wch);
@@ -330,22 +291,22 @@ void CommandListPopup::_DrawContent()
 void CommandListPopup::_drawList()
 {
     // draw empty popup
-    til::point WriteCoord;
-    WriteCoord.X = _region.Left + 1;
-    WriteCoord.Y = _region.Top + 1;
+    COORD WriteCoord;
+    WriteCoord.X = _region.Left + 1i16;
+    WriteCoord.Y = _region.Top + 1i16;
     size_t lStringLength = Width();
-    for (til::CoordType i = 0; i < Height(); ++i)
+    for (SHORT i = 0; i < Height(); ++i)
     {
         const OutputCellIterator spaces(UNICODE_SPACE, _attributes, lStringLength);
         const auto result = _screenInfo.Write(spaces, WriteCoord);
         lStringLength = result.GetCellDistance(spaces);
-        WriteCoord.Y += 1;
+        WriteCoord.Y += 1i16;
     }
 
-    auto api = Microsoft::Console::Interactivity::ServiceLocator::LocateGlobals().api;
+    auto& api = ServiceLocator::LocateGlobals().api;
 
-    WriteCoord.Y = _region.Top + 1;
-    auto i = gsl::narrow<SHORT>(std::max(_bottomIndex - Height() + 1, 0));
+    WriteCoord.Y = _region.Top + 1i16;
+    SHORT i = std::max(gsl::narrow<SHORT>(_bottomIndex - Height() + 1), 0i16);
     for (; i <= _bottomIndex; i++)
     {
         CHAR CommandNumber[COMMAND_NUMBER_SIZE];
@@ -355,7 +316,7 @@ void CommandListPopup::_drawList()
             return;
         }
 
-        auto CommandNumberPtr = CommandNumber;
+        PCHAR CommandNumberPtr = CommandNumber;
 
         size_t CommandNumberLength;
         if (FAILED(StringCchLengthA(CommandNumberPtr, ARRAYSIZE(CommandNumber), &CommandNumberLength)))
@@ -377,20 +338,20 @@ void CommandListPopup::_drawList()
             CommandNumberLength = static_cast<ULONG>(Width());
         }
 
-        WriteCoord.X = _region.Left + 1;
+        WriteCoord.X = _region.Left + 1i16;
 
-        LOG_IF_FAILED(api->WriteConsoleOutputCharacterAImpl(_screenInfo,
-                                                            { CommandNumberPtr, CommandNumberLength },
-                                                            WriteCoord,
-                                                            CommandNumberLength));
+        LOG_IF_FAILED(api.WriteConsoleOutputCharacterAImpl(_screenInfo,
+                                                           { CommandNumberPtr, CommandNumberLength },
+                                                           WriteCoord,
+                                                           CommandNumberLength));
 
         // write command to screen
         auto command = _history.GetNth(i);
         lStringLength = command.size();
         {
-            auto lTmpStringLength = lStringLength;
-            auto lPopupLength = static_cast<LONG>(Width() - CommandNumberLength);
-            auto lpStr = command.data();
+            size_t lTmpStringLength = lStringLength;
+            LONG lPopupLength = static_cast<LONG>(Width() - CommandNumberLength);
+            PCWCHAR lpStr = command.data();
             while (lTmpStringLength--)
             {
                 if (IsGlyphFullWidth(*lpStr++))
@@ -415,20 +376,20 @@ void CommandListPopup::_drawList()
             }
         }
 
-        WriteCoord.X = gsl::narrow<til::CoordType>(WriteCoord.X + CommandNumberLength);
+        WriteCoord.X = gsl::narrow<SHORT>(WriteCoord.X + CommandNumberLength);
         size_t used;
-        LOG_IF_FAILED(api->WriteConsoleOutputCharacterWImpl(_screenInfo,
-                                                            { command.data(), lStringLength },
-                                                            WriteCoord,
-                                                            used));
+        LOG_IF_FAILED(api.WriteConsoleOutputCharacterWImpl(_screenInfo,
+                                                           { command.data(), lStringLength },
+                                                           WriteCoord,
+                                                           used));
 
         // write attributes to screen
         if (i == _currentCommand)
         {
-            WriteCoord.X = _region.Left + 1;
+            WriteCoord.X = _region.Left + 1i16;
             // inverted attributes
             lStringLength = Width();
-            auto inverted = _attributes;
+            TextAttribute inverted = _attributes;
             inverted.Invert();
 
             const OutputCellIterator it(inverted, lStringLength);
@@ -449,14 +410,14 @@ void CommandListPopup::_drawList()
 // - wrap - Down past the bottom or up past the top should wrap the command list
 void CommandListPopup::_update(const SHORT originalDelta, const bool wrap)
 {
-    auto delta = originalDelta;
+    SHORT delta = originalDelta;
     if (delta == 0)
     {
         return;
     }
-    const auto Size = Height();
+    SHORT const Size = Height();
 
-    auto CurCmdNum = _currentCommand;
+    SHORT CurCmdNum = _currentCommand;
     SHORT NewCmdNum = CurCmdNum + delta;
 
     if (wrap)
@@ -468,7 +429,7 @@ void CommandListPopup::_update(const SHORT originalDelta, const bool wrap)
     {
         if (NewCmdNum >= gsl::narrow<SHORT>(_history.GetNumberOfCommands()))
         {
-            NewCmdNum = gsl::narrow<SHORT>(_history.GetNumberOfCommands()) - 1;
+            NewCmdNum = gsl::narrow<SHORT>(_history.GetNumberOfCommands()) - 1i16;
         }
         else if (NewCmdNum < 0)
         {
@@ -477,14 +438,14 @@ void CommandListPopup::_update(const SHORT originalDelta, const bool wrap)
     }
     delta = NewCmdNum - CurCmdNum;
 
-    auto Scroll = false;
+    bool Scroll = false;
     // determine amount to scroll, if any
     if (NewCmdNum <= _bottomIndex - Size)
     {
         _bottomIndex += delta;
-        if (_bottomIndex < Size - 1)
+        if (_bottomIndex < Size - 1i16)
         {
-            _bottomIndex = gsl::narrow<SHORT>(Size - 1);
+            _bottomIndex = Size - 1i16;
         }
         Scroll = true;
     }
@@ -493,7 +454,7 @@ void CommandListPopup::_update(const SHORT originalDelta, const bool wrap)
         _bottomIndex += delta;
         if (_bottomIndex >= gsl::narrow<SHORT>(_history.GetNumberOfCommands()))
         {
-            _bottomIndex = gsl::narrow<SHORT>(_history.GetNumberOfCommands()) - 1;
+            _bottomIndex = gsl::narrow<SHORT>(_history.GetNumberOfCommands()) - 1i16;
         }
         Scroll = true;
     }
@@ -512,36 +473,36 @@ void CommandListPopup::_update(const SHORT originalDelta, const bool wrap)
 }
 
 // Routine Description:
-// - Adjusts the highlighted line in a list of commands
+// - Adjusts the highligted line in a list of commands
 // Arguments:
 // - OldCurrentCommand - The previous command highlighted
 // - NewCurrentCommand - The new command to be highlighted.
 void CommandListPopup::_updateHighlight(const SHORT OldCurrentCommand, const SHORT NewCurrentCommand)
 {
-    til::CoordType TopIndex;
+    SHORT TopIndex;
     if (_bottomIndex < Height())
     {
         TopIndex = 0;
     }
     else
     {
-        TopIndex = _bottomIndex - Height() + 1;
+        TopIndex = _bottomIndex - Height() + 1i16;
     }
-    til::point WriteCoord;
-    WriteCoord.X = _region.Left + 1;
+    COORD WriteCoord;
+    WriteCoord.X = _region.Left + 1i16;
     size_t lStringLength = Width();
 
-    WriteCoord.Y = _region.Top + 1 + OldCurrentCommand - TopIndex;
+    WriteCoord.Y = _region.Top + 1i16 + OldCurrentCommand - TopIndex;
 
     const OutputCellIterator it(_attributes, lStringLength);
     const auto done = _screenInfo.Write(it, WriteCoord);
     lStringLength = done.GetCellDistance(it);
 
     // highlight new command
-    WriteCoord.Y = _region.Top + 1 + NewCurrentCommand - TopIndex;
+    WriteCoord.Y = _region.Top + 1i16 + NewCurrentCommand - TopIndex;
 
     // inverted attributes
-    auto inverted = _attributes;
+    TextAttribute inverted = _attributes;
     inverted.Invert();
     const OutputCellIterator itAttr(inverted, lStringLength);
     const auto doneAttr = _screenInfo.Write(itAttr, WriteCoord);

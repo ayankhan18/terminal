@@ -17,12 +17,14 @@ Author:
 
 #include "popup.h"
 
+
 class CommandNumberPopup final : public Popup
 {
 public:
-    explicit CommandNumberPopup(SCREEN_INFORMATION& screenInfo);
+    CommandNumberPopup(SCREEN_INFORMATION& screenInfo);
 
-    [[nodiscard]] NTSTATUS Process(COOKED_READ_DATA& cookedReadData) noexcept override;
+    [[nodiscard]]
+    NTSTATUS Process(CookedRead& cookedReadData) noexcept override;
 
 protected:
     void _DrawContent() override;
@@ -30,10 +32,10 @@ protected:
 private:
     std::wstring _userInput;
 
-    void _handleNumber(COOKED_READ_DATA& cookedReadData, const wchar_t wch) noexcept;
-    void _handleBackspace(COOKED_READ_DATA& cookedReadData) noexcept;
-    void _handleEscape(COOKED_READ_DATA& cookedReadData) noexcept;
-    void _handleReturn(COOKED_READ_DATA& cookedReadData) noexcept;
+    void _handleNumber(CookedRead& cookedReadData, const wchar_t wch) noexcept;
+    void _handleBackspace(CookedRead& cookedReadData) noexcept;
+    void _handleEscape(CookedRead& cookedReadData) noexcept;
+    void _handleReturn(CookedRead& cookedReadData) noexcept;
 
     void _push(const wchar_t wch);
     void _pop() noexcept;

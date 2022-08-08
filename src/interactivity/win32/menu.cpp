@@ -8,15 +8,16 @@
 #include "icon.hpp"
 #include "window.hpp"
 
-#include "../../host/dbcs.h"
-#include "../../host/getset.h"
-#include "../../host/handle.h"
-#include "../../host/misc.h"
-#include "../../host/server.h"
-#include "../../host/scrolling.hpp"
-#include "../../host/telemetry.hpp"
+#include "..\..\host\dbcs.h"
+#include "..\..\host\getset.h"
+#include "..\..\host\handle.h"
+#include "..\..\host\misc.h"
+#include "..\..\host\server.h"
+#include "..\..\host\scrolling.hpp"
+#include "..\..\host\telemetry.hpp"
+#include "..\..\host\cookedRead.hpp"
 
-#include "../inc/ServiceLocator.hpp"
+#include "..\inc\ServiceLocator.hpp"
 
 using namespace Microsoft::Console::Interactivity::Win32;
 
@@ -34,6 +35,7 @@ Menu::Menu(HMENU hMenu, HMENU hHeirMenu) :
     _hMenu(hMenu),
     _hHeirMenu(hHeirMenu)
 {
+
 }
 
 // Routine Description:
@@ -42,23 +44,26 @@ Menu::Menu(HMENU hMenu, HMENU hHeirMenu) :
 // - hWnd - The handle to the console's window
 // Return Value:
 // - STATUS_SUCCESS or suitable NT error code
-[[nodiscard]] NTSTATUS Menu::CreateInstance(HWND hWnd)
+[[nodiscard]]
+NTSTATUS Menu::CreateInstance(HWND hWnd)
 {
-    auto status = STATUS_SUCCESS;
+    NTSTATUS status = STATUS_SUCCESS;
+    HMENU hMenu     = nullptr;
+    HMENU hHeirMenu = nullptr;
 
+    int ItemLength;
     WCHAR ItemString[32];
 
     // This gets the title bar menu.
-    auto hMenu = GetSystemMenu(hWnd, FALSE);
-    auto hHeirMenu = LoadMenuW(ServiceLocator::LocateGlobals().hInstance,
-                               MAKEINTRESOURCE(ID_CONSOLE_SYSTEMMENU));
+    hMenu = GetSystemMenu(hWnd, FALSE);
+    hHeirMenu = LoadMenuW(ServiceLocator::LocateGlobals().hInstance,
+                          MAKEINTRESOURCE(ID_CONSOLE_SYSTEMMENU));
 
-    auto pNewMenu = new (std::nothrow) Menu(hMenu, hHeirMenu);
+    Menu *pNewMenu = new(std::nothrow) Menu(hMenu, hHeirMenu);
     status = NT_TESTNULL(pNewMenu);
 
     if (NT_SUCCESS(status))
     {
-        int ItemLength;
         // Load the submenu to the system menu.
         if (hHeirMenu)
         {
@@ -134,15 +139,16 @@ Menu* Menu::Instance()
 
 Menu::~Menu()
 {
+
 }
 
 // Routine Description:
 // - this initializes the system menu when a WM_INITMENU message is read.
 void Menu::Initialize()
 {
-    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    const auto hMenu = _hMenu;
-    const auto hHeirMenu = _hHeirMenu;
+    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    HMENU const hMenu = _hMenu;
+    HMENU const hHeirMenu = _hHeirMenu;
 
     // If the console is iconic, disable Mark and Scroll.
     if (gci.Flags & CONSOLE_IS_ICONIC)
@@ -246,19 +252,19 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
     UnlockConsole();
 
     // First try to find the console.dll next to the launched exe, else default to /windows/system32/console.dll
-    HANDLE hLibrary = LoadLibraryExW(gwszRelativePropertiesDll, nullptr, 0);
-    auto fLoadedDll = hLibrary != nullptr;
+    HANDLE hLibrary = LoadLibraryExW(gwszRelativePropertiesDll, 0, 0);
+    bool fLoadedDll = hLibrary != nullptr;
     if (!fLoadedDll)
     {
         WCHAR wszFilePath[MAX_PATH + 1] = { 0 };
-        const auto len = GetSystemDirectoryW(wszFilePath, ARRAYSIZE(wszFilePath));
+        UINT const len = GetSystemDirectoryW(wszFilePath, ARRAYSIZE(wszFilePath));
         if (len < ARRAYSIZE(wszFilePath))
         {
             if (SUCCEEDED(StringCchCatW(wszFilePath, ARRAYSIZE(wszFilePath) - len, gwszPropertiesDll)))
             {
                 wszFilePath[ARRAYSIZE(wszFilePath) - 1] = UNICODE_NULL;
 
-                hLibrary = LoadLibraryExW(wszFilePath, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+                hLibrary = LoadLibraryExW(wszFilePath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
                 fLoadedDll = hLibrary != nullptr;
             }
         }
@@ -266,12 +272,12 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
 
     if (fLoadedDll)
     {
-        const auto pfnCplApplet = (APPLET_PROC)GetProcAddress((HMODULE)hLibrary, "CPlApplet");
+        APPLET_PROC const pfnCplApplet = (APPLET_PROC)GetProcAddress((HMODULE)hLibrary, "CPlApplet");
         if (pfnCplApplet != nullptr)
         {
-            (*pfnCplApplet)(hwnd, CPL_INIT, 0, 0);
-            (*pfnCplApplet)(hwnd, CPL_DBLCLK, (LPARAM)&StateInfo, 0);
-            (*pfnCplApplet)(hwnd, CPL_EXIT, 0, 0);
+            (*pfnCplApplet) (hwnd, CPL_INIT, 0, 0);
+            (*pfnCplApplet) (hwnd, CPL_DBLCLK, (LPARAM)& StateInfo, 0);
+            (*pfnCplApplet) (hwnd, CPL_EXIT, 0, 0);
         }
 
         LOG_IF_WIN32_BOOL_FALSE(FreeLibrary((HMODULE)hLibrary));
@@ -296,26 +302,27 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
     }
 }
 
-[[nodiscard]] HRESULT Menu::s_GetConsoleState(CONSOLE_STATE_INFO* const pStateInfo)
+[[nodiscard]]
+HRESULT Menu::s_GetConsoleState(CONSOLE_STATE_INFO * const pStateInfo)
 {
-    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    const auto& ScreenInfo = gci.GetActiveOutputBuffer();
-    LOG_IF_FAILED(til::unwrap_coord_size_hr(ScreenInfo.GetBufferSize().Dimensions(), pStateInfo->ScreenBufferSize));
-    LOG_IF_FAILED(til::unwrap_coord_size_hr(ScreenInfo.GetViewport().Dimensions(), pStateInfo->WindowSize));
+    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const SCREEN_INFORMATION& ScreenInfo = gci.GetActiveOutputBuffer();
+    pStateInfo->ScreenBufferSize = ScreenInfo.GetBufferSize().Dimensions();
+    pStateInfo->WindowSize = ScreenInfo.GetViewport().Dimensions();
 
-    const auto rcWindow = ServiceLocator::LocateConsoleWindow<Window>()->GetWindowRect();
+    const RECT rcWindow = ServiceLocator::LocateConsoleWindow<Window>()->GetWindowRect();
     pStateInfo->WindowPosX = rcWindow.left;
     pStateInfo->WindowPosY = rcWindow.top;
 
-    const auto& currentFont = ScreenInfo.GetCurrentFont();
+    const FontInfo& currentFont = ScreenInfo.GetCurrentFont();
     pStateInfo->FontFamily = currentFont.GetFamily();
-    LOG_IF_FAILED(til::unwrap_coord_size_hr(currentFont.GetUnscaledSize(), pStateInfo->FontSize));
+    pStateInfo->FontSize = currentFont.GetUnscaledSize();
     pStateInfo->FontWeight = currentFont.GetWeight();
-    LOG_IF_FAILED(StringCchCopyW(pStateInfo->FaceName, ARRAYSIZE(pStateInfo->FaceName), currentFont.GetFaceName().data()));
+    StringCchCopyW(pStateInfo->FaceName, ARRAYSIZE(pStateInfo->FaceName), currentFont.GetFaceName());
 
-    const auto& cursor = ScreenInfo.GetTextBuffer().GetCursor();
+    const Cursor& cursor = ScreenInfo.GetTextBuffer().GetCursor();
     pStateInfo->CursorSize = cursor.GetSize();
-    pStateInfo->CursorColor = gci.GetColorTableEntry(TextColor::CURSOR_COLOR);
+    pStateInfo->CursorColor = cursor.GetColor();
     pStateInfo->CursorType = static_cast<unsigned int>(cursor.GetType());
 
     // Retrieve small icon for use in displaying the dialog
@@ -335,15 +342,12 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
     pStateInfo->NumberOfHistoryBuffers = gci.GetNumberOfHistoryBuffers();
     pStateInfo->HistoryNoDup = !!(gci.Flags & CONSOLE_HISTORY_NODUP);
 
-    for (size_t i = 0; i < std::size(pStateInfo->ColorTable); i++)
-    {
-        pStateInfo->ColorTable[i] = gci.GetLegacyColorTableEntry(i);
-    }
+    memmove(pStateInfo->ColorTable, gci.GetColorTable(), gci.GetColorTableSize() * sizeof(COLORREF));
 
     // Create mutable copies of the titles so the propsheet can do something with them.
     if (gci.GetOriginalTitle().length() > 0)
     {
-        pStateInfo->OriginalTitle = new (std::nothrow) wchar_t[gci.GetOriginalTitle().length() + 1]{ UNICODE_NULL };
+        pStateInfo->OriginalTitle = new(std::nothrow) wchar_t[gci.GetOriginalTitle().length()+1]{UNICODE_NULL};
         RETURN_IF_NULL_ALLOC(pStateInfo->OriginalTitle);
         gci.GetOriginalTitle().copy(pStateInfo->OriginalTitle, gci.GetOriginalTitle().length());
     }
@@ -354,7 +358,7 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
 
     if (gci.GetLinkTitle().length() > 0)
     {
-        pStateInfo->LinkTitle = new (std::nothrow) wchar_t[gci.GetLinkTitle().length() + 1]{ UNICODE_NULL };
+        pStateInfo->LinkTitle = new(std::nothrow) wchar_t[gci.GetLinkTitle().length()+1]{UNICODE_NULL};
         RETURN_IF_NULL_ALLOC(pStateInfo->LinkTitle);
         gci.GetLinkTitle().copy(pStateInfo->LinkTitle, gci.GetLinkTitle().length());
     }
@@ -375,9 +379,10 @@ void Menu::s_ShowPropertiesDialog(HWND const hwnd, BOOL const Defaults)
 
     pStateInfo->InterceptCopyPaste = gci.GetInterceptCopyPaste();
 
-    // Get the properties from the settings
-    pStateInfo->DefaultForeground = gci.GetColorTableEntry(TextColor::DEFAULT_FOREGROUND);
-    pStateInfo->DefaultBackground = gci.GetColorTableEntry(TextColor::DEFAULT_BACKGROUND);
+    // Get the properties from the settings - CONSOLE_INFORMATION overloads
+    //  these methods to implement IDefaultColorProvider
+    pStateInfo->DefaultForeground = gci.GetDefaultForegroundColor();
+    pStateInfo->DefaultBackground = gci.GetDefaultBackgroundColor();
 
     pStateInfo->TerminalScrolling = gci.IsTerminalScrolling();
     // end console v2 properties
@@ -415,8 +420,8 @@ HMENU Menu::s_GetHeirMenuHandle()
 // Updates the console state from information sent by the properties dialog box.
 void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
 {
-    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    auto& ScreenInfo = gci.GetActiveOutputBuffer();
+    CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    SCREEN_INFORMATION& ScreenInfo = gci.GetActiveOutputBuffer();
 
     if (gci.OutputCP != pStateInfo->CodePage)
     {
@@ -447,40 +452,41 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
     // end V2 console properties
 
     // Apply font information (must come before all character calculations for window/buffer size).
-    FontInfo fiNewFont(pStateInfo->FaceName, gsl::narrow_cast<unsigned char>(pStateInfo->FontFamily), pStateInfo->FontWeight, til::wrap_coord_size(pStateInfo->FontSize), pStateInfo->CodePage);
+    FontInfo fiNewFont(pStateInfo->FaceName, static_cast<BYTE>(pStateInfo->FontFamily), pStateInfo->FontWeight, pStateInfo->FontSize, pStateInfo->CodePage);
 
     ScreenInfo.UpdateFont(&fiNewFont);
 
-    const auto& fontApplied = ScreenInfo.GetCurrentFont();
+    const FontInfo& fontApplied = ScreenInfo.GetCurrentFont();
 
     // Now make sure internal font state reflects the font chosen
     gci.SetFontFamily(fontApplied.GetFamily());
     gci.SetFontSize(fontApplied.GetUnscaledSize());
     gci.SetFontWeight(fontApplied.GetWeight());
-    gci.SetFaceName(fontApplied.GetFaceName());
+    gci.SetFaceName(fontApplied.GetFaceName(), LF_FACESIZE);
 
     // Set the cursor properties in the Settings
     const auto cursorType = static_cast<CursorType>(pStateInfo->CursorType);
+    gci.SetCursorColor(pStateInfo->CursorColor);
     gci.SetCursorType(cursorType);
-    gci.SetColorTableEntry(TextColor::CURSOR_COLOR, pStateInfo->CursorColor);
 
     // Then also apply them to the buffer's cursor
     ScreenInfo.SetCursorInformation(pStateInfo->CursorSize,
                                     ScreenInfo.GetTextBuffer().GetCursor().IsVisible());
+    ScreenInfo.SetCursorColor(pStateInfo->CursorColor, true);
     ScreenInfo.SetCursorType(cursorType, true);
 
     gci.SetTerminalScrolling(pStateInfo->TerminalScrolling);
 
     {
         // Requested window in characters
-        auto coordWindow = til::wrap_coord_size(pStateInfo->WindowSize);
+        COORD coordWindow = pStateInfo->WindowSize;
 
         // Requested buffer in characters.
-        auto coordBuffer = til::wrap_coord_size(pStateInfo->ScreenBufferSize);
+        COORD coordBuffer = pStateInfo->ScreenBufferSize;
 
         // First limit the window so it cannot be bigger than the monitor.
         // Maximum number of characters we could fit on the given monitor.
-        const auto coordLargest = ScreenInfo.GetLargestWindowSizeInCharacters();
+        COORD const coordLargest = ScreenInfo.GetLargestWindowSizeInCharacters();
 
         coordWindow.X = std::min(coordLargest.X, coordWindow.X);
         coordWindow.Y = std::min(coordLargest.Y, coordWindow.Y);
@@ -497,19 +503,19 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
             {
                 // Since we need a scroll bar in the Y direction, clamp the buffer width to make sure that
                 // it is leaving appropriate space for a scroll bar.
-                const auto coordScrollBars = ScreenInfo.GetScrollBarSizesInCharacters();
-                const auto sMaxBufferWidthWithScroll = coordLargest.X - coordScrollBars.X;
+                COORD const coordScrollBars = ScreenInfo.GetScrollBarSizesInCharacters();
+                SHORT const sMaxBufferWidthWithScroll = coordLargest.X - coordScrollBars.X;
 
                 coordBuffer.X = std::min(coordBuffer.X, sMaxBufferWidthWithScroll);
             }
         }
 
         // Now adjust the buffer size first to whatever we want it to be if it's different than before.
-        const auto coordScreenBufferSize = ScreenInfo.GetBufferSize().Dimensions();
+        const COORD coordScreenBufferSize = ScreenInfo.GetBufferSize().Dimensions();
         if (coordBuffer.X != coordScreenBufferSize.X ||
             coordBuffer.Y != coordScreenBufferSize.Y)
         {
-            const auto pCommandLine = &CommandLine::Instance();
+            CommandLine* const pCommandLine = &CommandLine::Instance();
 
             pCommandLine->Hide(FALSE);
 
@@ -519,7 +525,7 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
         }
 
         // Finally, restrict window size to the maximum possible size for the given buffer now that it's processed.
-        const auto coordMaxForBuffer = ScreenInfo.GetMaxWindowSizeInCharacters();
+        COORD const coordMaxForBuffer = ScreenInfo.GetMaxWindowSizeInCharacters();
 
         coordWindow.X = std::min(coordWindow.X, coordMaxForBuffer.X);
         coordWindow.Y = std::min(coordWindow.Y, coordMaxForBuffer.Y);
@@ -546,7 +552,7 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
     {
         gci.Flags &= ~CONSOLE_AUTO_POSITION;
 
-        til::point pt;
+        POINT pt;
         pt.x = pStateInfo->WindowPosX;
         pt.y = pStateInfo->WindowPosY;
 
@@ -563,10 +569,7 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
         }
     }
 
-    for (size_t i = 0; i < std::size(pStateInfo->ColorTable); i++)
-    {
-        gci.SetLegacyColorTableEntry(i, pStateInfo->ColorTable[i]);
-    }
+    gci.SetColorTable(pStateInfo->ColorTable, gci.GetColorTableSize());
 
     // Ensure that attributes only contain color specification.
     WI_ClearAllFlags(pStateInfo->ScreenAttributes, ~(FG_ATTRS | BG_ATTRS));
@@ -578,16 +581,11 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
     gci.SetFillAttribute(pStateInfo->ScreenAttributes);
     gci.SetPopupFillAttribute(pStateInfo->PopupAttributes);
     // Store our updated Default Color values
-    gci.SetColorTableEntry(TextColor::DEFAULT_FOREGROUND, pStateInfo->DefaultForeground);
-    gci.SetColorTableEntry(TextColor::DEFAULT_BACKGROUND, pStateInfo->DefaultBackground);
-
-    // Make sure the updated fill attributes are passed on to the TextAttribute class.
-    TextAttribute::SetLegacyDefaultAttributes(pStateInfo->ScreenAttributes);
-    // And recalculate the position of the default colors in the color table.
-    gci.CalculateDefaultColorIndices();
+    gci.SetDefaultForegroundColor(pStateInfo->DefaultForeground);
+    gci.SetDefaultBackgroundColor(pStateInfo->DefaultBackground);
 
     // Set the screen info's default text attributes to defaults -
-    ScreenInfo.SetDefaultAttributes({}, TextAttribute{ gci.GetPopupFillAttribute() });
+    ScreenInfo.SetDefaultAttributes(gci.GetDefaultAttributes(), { gci.GetPopupFillAttribute() });
 
     CommandHistory::s_ResizeAll(pStateInfo->HistoryBufferSize);
     gci.SetNumberOfHistoryBuffers(pStateInfo->NumberOfHistoryBuffers);
@@ -607,6 +605,7 @@ void Menu::s_PropertiesUpdate(PCONSOLE_STATE_INFO pStateInfo)
     gci.ConsoleIme.RefreshAreaAttributes();
 
     gci.SetInterceptCopyPaste(!!pStateInfo->InterceptCopyPaste);
+
 }
 
 #pragma endregion

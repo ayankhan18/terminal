@@ -20,31 +20,40 @@ Revision History:
 
 #pragma once
 
-#include "readDataCooked.hpp"
+#include "cookedRead.hpp"
 #include "screenInfo.hpp"
 #include "readDataCooked.hpp"
+
+
+#define MINIMUM_COMMAND_PROMPT_SIZE 5
+
 
 class CommandHistory;
 
 class Popup
 {
 public:
-    static constexpr til::CoordType MINIMUM_COMMAND_PROMPT_SIZE = 5;
 
-    using UserInputFunction = std::function<NTSTATUS(COOKED_READ_DATA&, bool&, DWORD&, wchar_t&)>;
+    using UserInputFunction = std::function<NTSTATUS(CookedRead&, bool&, DWORD&, wchar_t&)>;
 
-    Popup(SCREEN_INFORMATION& screenInfo, const til::size proposedSize);
+    Popup(SCREEN_INFORMATION& screenInfo, const COORD proposedSize);
     virtual ~Popup();
-    [[nodiscard]] virtual NTSTATUS Process(COOKED_READ_DATA& cookedReadData) noexcept = 0;
+    [[nodiscard]]
+    virtual NTSTATUS Process(CookedRead& cookedReadData) noexcept = 0;
 
     void Draw();
 
+    void UpdateStoredColors(const TextAttribute& newAttr,
+                            const TextAttribute& newPopupAttr,
+                            const TextAttribute& oldAttr,
+                            const TextAttribute& oldPopupAttr);
+
     void End();
 
-    til::CoordType Width() const noexcept;
-    til::CoordType Height() const noexcept;
+    SHORT Width() const noexcept;
+    SHORT Height() const noexcept;
 
-    til::point GetCursorPosition() const noexcept;
+    COORD GetCursorPosition() const noexcept;
 
 protected:
     // used in test code to alter how the popup fetches use input
@@ -57,26 +66,27 @@ protected:
     friend class CommandListPopupTests;
 #endif
 
-    [[nodiscard]] NTSTATUS _getUserInput(COOKED_READ_DATA& cookedReadData, bool& popupKey, DWORD& modifiers, wchar_t& wch) noexcept;
+    NTSTATUS _getUserInput(CookedRead& cookedReadData, bool& popupKey, DWORD& modifiers, wchar_t& wch) noexcept;
     void _DrawPrompt(const UINT id);
     virtual void _DrawContent() = 0;
 
-    til::inclusive_rect _region; // region popup occupies
+
+    SMALL_RECT _region;  // region popup occupies
     SCREEN_INFORMATION& _screenInfo;
-    TextAttribute _attributes; // text attributes
+    TextAttribute _attributes;    // text attributes
 
 private:
-    til::size _CalculateSize(const SCREEN_INFORMATION& screenInfo, const til::size proposedSize);
-    til::point _CalculateOrigin(const SCREEN_INFORMATION& screenInfo, const til::size size);
+    COORD _CalculateSize(const SCREEN_INFORMATION& screenInfo, const COORD proposedSize);
+    COORD _CalculateOrigin(const SCREEN_INFORMATION& screenInfo, const COORD size);
 
     void _DrawBorder();
 
-    [[nodiscard]] static NTSTATUS _getUserInputInternal(COOKED_READ_DATA& cookedReadData,
-                                                        bool& popupKey,
-                                                        DWORD& modifiers,
-                                                        wchar_t& wch) noexcept;
+    static NTSTATUS _getUserInputInternal(CookedRead& cookedReadData,
+                                          bool& popupKey,
+                                          DWORD& modifiers,
+                                          wchar_t& wch) noexcept;
 
     OutputCellRect _oldContents; // contains data under popup
-    til::size _oldScreenSize;
+    COORD _oldScreenSize;
     UserInputFunction _userInputFunction;
 };
